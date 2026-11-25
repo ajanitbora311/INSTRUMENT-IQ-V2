@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Generate an Excel estimate for refinery instrumentation work.">
+<title>Instrumentation Estimator</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="xlsx.full.min.js"></script>
+<script defer src="engine.js"></script>
+<script defer src="semantic.js"></script>
+<script defer src="dashboard.js"></script>
+<script defer src="app.js"></script>
+</head>
+<body>
+<header><div class="frame masthead"><div class="brand-icon" aria-hidden="true">⌁</div><span>Instrumentation Estimator</span></div></header>
+<main class="frame">
+<section class="hero" aria-labelledby="title">
+<div class="intro">
+<p class="eyebrow">REFINERY COST ENGINEERING</p>
+<h1 id="title">Instrumentation estimates</h1>
+<p>Upload your Excel take-off to get a completed estimate with rates, amounts, and references for review.</p>
+</div>
+<div class="card">
+<h2>Your take-off</h2>
+<p class="support">Choose an Excel workbook with the five take-off columns.</p>
+<div class="drop" id="drop">
+<input id="workbook" type="file" accept=".xlsx,.xls,.xlsm" aria-describedby="file-note">
+<label for="workbook"><span class="file-icon" aria-hidden="true">↑</span><strong id="file-label">Choose Excel file</strong><span id="file-note">or drag it here · XLSX, XLS, XLSM</span></label>
+</div>
+<button id="download" type="button" disabled>Generate estimate</button>
+<div class="actions" id="estimate-actions" hidden>
+<button id="view" type="button">View dashboard</button>
+<button id="export" type="button">Download Excel</button>
+</div>
+<p id="message" role="status" aria-live="polite" hidden></p>
+<button id="template" type="button" class="template">Download blank template</button>
+</div>
+</section>
+<section class="card dashboard" id="dashboard" hidden aria-labelledby="dashboard-title">
+<div class="dashboard-top"><div><h2 id="dashboard-title" tabindex="-1">Estimate dashboard</h2><p id="estimate-name" class="support"></p></div></div>
+<div class="totals">
+<div>Priced total <strong id="dash-total"></strong></div>
+<div>Priced rows <strong id="dash-priced"></strong></div>
+<div>Review rows <strong id="dash-review"></strong></div>
+</div>
+<div class="dash-controls"><label for="source-filter">Filter by source or status</label><select id="source-filter">
+<option value="all">All rows</option><option value="analysis">Rate analysis workbook</option>
+<option value="sor">NRL SOR</option><option value="po">Service PO</option><option value="Review">Review</option>
+</select></div>
+<div class="table-wrap" tabindex="0" aria-label="Estimate line items">
+<table><thead><tr><th scope="col">Sl. no.</th><th scope="col">Take-off item</th><th scope="col">Quantity</th><th scope="col">Rate</th><th scope="col">Amount</th><th scope="col">Source and reference</th></tr></thead><tbody id="dash-rows"></tbody></table>
+</div>
+<div class="pager"><button type="button" id="dash-prev">Previous</button><span id="dash-page"></span><button type="button" id="dash-next">Next</button></div>
+</section>
+</main>
+</body>
+</html>
