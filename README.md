@@ -1,6 +1,6 @@
 # Instrumentation Estimator
 
-The fixed catalog was built from the supplied **Rate Analysis of Inst Misc SOR Jobs.xls** and five **Material PO Report** exports from 2022–2026. It contains 48 rate-analysis entries and 6,108 material PO items. The landing page accepts one Excel take-off and provides a dashboard and Excel download after generation. There is no user-facing source picker.
+The fixed catalog was built from the supplied **Rate Analysis of Inst Misc SOR Jobs.xls** and five **Material PO Report** exports from 2022–2026. It contains 48 rate-analysis entries and 6,108 material PO items. The landing page accepts one Excel take-off and provides a dashboard and Excel download after generation. This is completely meant for NRL users only.
 
 ## Run this package locally
 
