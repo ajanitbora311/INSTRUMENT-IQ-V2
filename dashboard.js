@@ -3,6 +3,9 @@ const sourceLabels = {analysis:'Rate analysis workbook', sor:'NRL SOR', po:'Serv
 const inr = new Intl.NumberFormat('en-IN', {style:'currency', currency:'INR'});
 const rateDisplay = new Intl.NumberFormat('en-IN', {maximumFractionDigits:8});
 const pageSize = 25;
+const sourceCurrency = source => source.currency || (source.kind === 'material' ? 'Unspecified currency' : 'INR');
+const sourceRateDisplay = source => ['inr', '₹'].includes(norm(sourceCurrency(source)))
+  ? '₹' + rateDisplay.format(source.rate) : sourceCurrency(source) + ' ' + rateDisplay.format(source.rate);
 let dashboardState;
 
 function appendText(parent, tag, text) {
@@ -15,7 +18,7 @@ function appendText(parent, tag, text) {
 function showDashboard(estimate) {
   if (dashboardState?.estimate !== estimate) {
     const {rows, catalog, name} = estimate;
-    const priced = rows.filter(row => row.source).length;
+    const priced = rows.filter(row => row.status === 'Priced').length;
     dashboardState = {estimate, page:0};
     dashboardState.createSearch = () => createCandidateSearch(
       [...catalog.sor, ...catalog.po, ...catalog.analysis, ...catalog.material]);
@@ -34,7 +37,7 @@ function showDashboard(estimate) {
 function renderDashboard() {
   const {estimate, page} = dashboardState;
   const filter = dashboardId('source-filter').value;
-  const rows = estimate.rows.filter(row => filter === 'all' || (row.source?.kind ?? row.status) === filter);
+  const rows = estimate.rows.filter(row => filter === 'all' || (filter === 'Review' ? row.status === 'Review' : row.source?.kind === filter));
   const tbody = dashboardId('dash-rows');
   tbody.replaceChildren();
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -44,7 +47,7 @@ function renderDashboard() {
   if (!rows.length) appendText(appendText(tbody, 'tr'), 'td', 'No rows match this filter.').colSpan = 6;
   for (const row of rows.slice(page * pageSize, (page + 1) * pageSize)) {
     const tr = appendText(tbody, 'tr');
-    if (!row.source) tr.classList.add('review-row');
+    if (row.status === 'Review') tr.classList.add('review-row');
     const [serial, short, long, unit, quantity] = row.input;
     const input = appendText(tr, 'td', serial);
     if (row.itemCode) appendText(input, 'p', 'Item code ' + row.itemCode);
@@ -56,16 +59,20 @@ function renderDashboard() {
       appendText(details, 'p', long);
     }
     appendText(tr, 'td', quantity + ' ' + unit);
-    appendText(tr, 'td', row.source ? '₹' + rateDisplay.format(row.rate) : '—');
-    appendText(tr, 'td', row.source ? inr.format(row.amount) : '—');
+    appendText(tr, 'td', row.rate !== undefined ? '₹' + rateDisplay.format(row.rate) : row.source ? sourceRateDisplay(row.source) : '—');
+    appendText(tr, 'td', row.amount === undefined ? '—' : inr.format(row.amount));
     const provenance = appendText(tr, 'td');
     if (row.source) {
       const source = row.source;
+      if (row.status === 'Review') {
+        appendText(provenance, 'strong', 'Review · Provisional rate');
+        appendText(provenance, 'p', row.reason);
+      }
       appendText(provenance, 'strong', sourceLabels[source.kind] + ' · ' + source.reference);
       appendText(provenance, 'p', source.name + ' · ' + source.sheet + ' · row ' + source.row);
       const details = appendText(provenance, 'details');
       appendText(details, 'summary', 'Rate details');
-      appendText(details, 'p', row.method + ' · ₹' + rateDisplay.format(source.rate) + ' per ' + source.unit);
+      appendText(details, 'p', row.method + ' · ' + sourceRateDisplay(source) + ' per ' + source.unit);
       appendText(details, 'p', source.description);
       if (row.audit) appendText(details, 'p', row.audit);
     } else {
