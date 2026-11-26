@@ -44,8 +44,10 @@ function renderDashboard() {
   if (!rows.length) appendText(appendText(tbody, 'tr'), 'td', 'No rows match this filter.').colSpan = 6;
   for (const row of rows.slice(page * pageSize, (page + 1) * pageSize)) {
     const tr = appendText(tbody, 'tr');
+    if (!row.source) tr.classList.add('review-row');
     const [serial, short, long, unit, quantity] = row.input;
     const input = appendText(tr, 'td', serial);
+    if (row.itemCode) appendText(input, 'p', 'Item code ' + row.itemCode);
     if (row.sheet && row.row) appendText(input, 'p', row.sheet + ' · row ' + row.row);
     const description = appendText(tr, 'td', short || long);
     if (short && long && short !== long) {
@@ -75,7 +77,12 @@ function renderDashboard() {
         if (!details.open || details.dataset.loaded) return;
         details.dataset.loaded = 'true';
         const search = dashboardState.lookup ??= dashboardState.createSearch();
-        const matches = search(long || short, unit);
+        const material = dashboardState.estimate.catalog.material;
+        const code = [row.itemCode, short, long].map(itemKey).filter(Boolean);
+        const byCode = material.filter(source => code.some(key => sourceItemKeys(source).has(key)))
+          .map(source => ({source}));
+        const matches = [...byCode, ...search(long || short, unit)
+          .filter(candidate => !byCode.some(exact => exact.source === candidate.source))].slice(0, 5);
         if (!matches.length) {
           appendText(details, 'p', 'No related records found with a compatible unit.');
           return;
