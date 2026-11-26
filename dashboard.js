@@ -45,7 +45,8 @@ function renderDashboard() {
   for (const row of rows.slice(page * pageSize, (page + 1) * pageSize)) {
     const tr = appendText(tbody, 'tr');
     const [serial, short, long, unit, quantity] = row.input;
-    appendText(tr, 'td', serial);
+    const input = appendText(tr, 'td', serial);
+    if (row.sheet && row.row) appendText(input, 'p', row.sheet + ' · row ' + row.row);
     const description = appendText(tr, 'td', short || long);
     if (short && long && short !== long) {
       const details = appendText(description, 'details');
@@ -83,6 +84,11 @@ function renderDashboard() {
         for (const {source} of matches) {
           const item = appendText(list, 'li', sourceLabels[source.kind] + ' · ' + source.reference);
           appendText(item, 'p', source.short || source.description);
+          if (source.kind === 'material' && Number.isFinite(source.rate)) {
+            const value = source.currency === 'INR'
+              ? inr.format(source.rate) : [source.currency, rateDisplay.format(source.rate)].filter(Boolean).join(' ');
+            appendText(item, 'small', 'Reported PO unit price ' + value + (source.unit ? ' per ' + source.unit : ''));
+          }
           appendText(item, 'small', source.name + ' · ' + source.sheet + ' · row ' + source.row);
         }
       });
