@@ -6,7 +6,7 @@ const HEAD = {
 
 const OUTPUT = ['RATE (₹)', 'AMOUNT (₹)', 'RATE SOURCE (NRL SOR 2023)', 'RATE SOURCE (NRL POs)',
   'RATE SOURCE (to be mentioned)', 'Reference', 'Unit Conversion', 'Status', 'Review Reason',
-  'Source Workbook', 'Source Sheet', 'Source Row', 'Source Description', 'Original Rate (₹)', 'Original Unit', 'Match Method'];
+  'Source Workbook', 'Source Sheet', 'Source Row', 'Source Description', 'Original Rate (₹)', 'Original Unit', 'Match Method', 'Input Sheet', 'Input Row'];
 
 const norm = value => String(value ?? '').normalize('NFKC').toLowerCase().replace(/[‐‑–—]/g, '-').replace(/\s+/g, ' ').trim();
 const header = value => norm(value).replace(/[^a-z0-9]/g, '');
@@ -42,22 +42,29 @@ function readBook(workbook, kind, name) {
       });
       const absent = HEAD[kind].filter((_, column) => indexes[column] < 0);
       if (absent.length < missing.length) missing = absent;
+      if (kind === 'boq') return indexes[3] >= 0 && indexes[4] >= 0 && (indexes[1] >= 0 || indexes[2] >= 0);
       return !absent.length && new Set(indexes).size === indexes.length;
     });
     if (start < 0) continue;
     found = true;
     const currencyIndex = raw[start].findIndex(value => ['currency', 'currencycode', 'waers'].includes(header(value)));
     for (let i = start + 1; i < raw.length; i++) {
-      const cells = indexes.map(index => raw[i][index]);
+      const cells = indexes.map(index => {
+        if (index < 0) return '';
+        const cell = ws[XLSX.utils.encode_cell({r:i, c:index})];
+        return kind === 'boq' && cell?.f && !present(raw[i][index]) ? '=' + cell.f : raw[i][index];
+      });
       if (!cells.some(present)) continue;
       const displayed = j => {
+        if (indexes[j] < 0) return '';
         const cell = ws[XLSX.utils.encode_cell({r: i, c: indexes[j]})];
         return cell ? (cell.w ?? XLSX.utils.format_cell(cell)) : '';
       };
       const provenance = {name, sheet, row: i + 1};
       if (kind === 'boq') {
-        if (/^(grand total|sub[ -]?total|total)$/.test(norm(cells[1] || cells[0])) && !present(cells[2]) && !present(cells[3])) continue;
-        result.push({...provenance, input: [displayed(0), ...cells.slice(1)]});
+        const summary = /^(grand total|sub[ -]?total|total)$/.test(norm(cells[1] || cells[0]))
+          && !present(cells[2]) && !present(cells[3]);
+        result.push({...provenance, summary, input:[displayed(0) || cells[0], ...cells.slice(1)]});
         continue;
       }
       const [description, unit, rate] = cells.slice(-3);
@@ -114,6 +121,7 @@ const money = amount => Math.round((amount + Number.EPSILON * Math.abs(amount)) 
 
 function priceRows(boq, sor, po, analysis = []) {
   const normalize = typeof semanticKey === 'function' ? semanticKey : norm;
+  const signature = typeof pricingSignature === 'function' ? pricingSignature : () => '';
   const makeIndex = (records, keyOf) => {
     const index = new Map();
     for (const record of records) {
@@ -126,7 +134,8 @@ function priceRows(boq, sor, po, analysis = []) {
   };
   const catalog = [sor, po, analysis].flatMap(records => [
     {index:makeIndex(records, norm), keyOf:norm, method:'Exact description'},
-    {index:makeIndex(records, normalize), keyOf:normalize, method:'Equivalent terminology'}
+    {index:makeIndex(records, normalize), keyOf:normalize, method:'Equivalent terminology'},
+    {index:makeIndex(records, signature), keyOf:signature, method:'Semantic match'}
   ]);
   return boq.map(row => {
     const [, short, long, unit, quantity] = row.input;
@@ -134,11 +143,13 @@ function priceRows(boq, sor, po, analysis = []) {
     const key = norm(present(long) ? long : short);
     const qty = numeric(quantity);
     const review = reason => ({...row, status: 'Review', reason});
+    if (row.summary) return review('Subtotal or total copied from the input workbook.');
     if (!key || !present(unit) || qty === null || qty < 0) return review('Check the description, unit and quantity.');
     for (const {index, keyOf, method} of catalog) {
       const matchKey = keyOf(present(long) ? long : short);
       const matches = (index.get(matchKey) || []).flatMap(source => {
-        if (present(long) && keyOf(source.description) !== matchKey) return [];
+        if (present(long) && keyOf(source.description) !== matchKey
+            && !(method === 'Semantic match' && keyOf(source.short) === matchKey)) return [];
         const factor = conversion(source.unit, unit);
         if (factor === null || source.rate === null || source.rate < 0 || !source.reference) return [];
         const rate = source.rate * factor;
@@ -173,32 +184,39 @@ function exportRows(rows, material = []) {
     const s = result.source;
     return [...result.input, result.rate, result.amount, s?.kind === 'sor' ? s.reference : '',
       s?.kind === 'po' ? s.reference : '', s?.kind === 'analysis' ? 'Rate analysis · ' + s.reference : '', s?.reference, result.audit, result.status,
-      result.reason, s?.name, s?.sheet, s?.row, s?.description, s?.rate, s?.unit, result.method];
+      result.reason, s?.name, s?.sheet, s?.row, s?.description, s?.rate, s?.unit, result.method, result.sheet, result.row];
   });
   const totalRow = Array(HEAD.boq.length + OUTPUT.length).fill('');
   totalRow[1] = 'TOTAL (priced rows)';
   totalRow[6] = estimateTotal(rows);
   const ws = XLSX.utils.aoa_to_sheet([[...HEAD.boq, ...OUTPUT], ...data, totalRow]);
-  ws['!cols'] = [10, 30, 50, 12, 14, 16, 18, 27, 27, 27, 26, 52, 14, 55, 26, 20, 14, 45, 20, 16, 26].map(wch => ({wch}));
-  ws['!autofilter'] = {ref: 'A1:U' + (rows.length + 1)};
+  ws['!cols'] = [10, 30, 50, 12, 14, 16, 18, 27, 27, 27, 26, 52, 14, 55, 26, 20, 14, 45, 20, 16, 26, 22, 12].map(wch => ({wch}));
+  ws['!autofilter'] = {ref: 'A1:W' + (rows.length + 1)};
   for (let i = 2; i <= rows.length + 2; i++) {
     if (ws['F' + i]?.t === 'n') ws['F' + i].z = '0.00######';
     if (ws['G' + i]?.t === 'n') ws['G' + i].z = '#,##0.00';
   }
   XLSX.utils.book_append_sheet(workbook, ws, 'Instrumentation estimate');
-  const materialIndex = new Map();
+  const materialIndexes = {short:new Map(), full:new Map()};
   for (const item of material) {
-    for (const key of new Set([norm(item.short), norm(item.description)].filter(Boolean))) {
-      if (!materialIndex.has(key)) materialIndex.set(key, []);
-      materialIndex.get(key).push(item);
+    const prefix = item.short + ' · ';
+    const long = item.short && item.description.startsWith(prefix)
+      ? item.description.slice(prefix.length) : item.description;
+    const keys = {short:[item.short, item.description], full:[item.description, long, item.short + ' ' + long]};
+    for (const [type, values] of Object.entries(keys)) {
+      const index = materialIndexes[type];
+      for (const key of new Set(values.map(norm).filter(Boolean))) {
+        if (!index.has(key)) index.set(key, []);
+        index.get(key).push(item);
+      }
     }
   }
   const evidence = [];
   for (const row of rows) {
     if (row.status !== 'Review') continue;
     const [serial, short, long] = row.input;
-    const matches = materialIndex.get(norm(present(long) ? long : short)) || [];
-    for (const item of matches.filter(item => !present(long) || norm(item.description) === norm(long))) {
+    const matches = present(long) ? materialIndexes.full.get(norm(long)) : materialIndexes.short.get(norm(short));
+    for (const item of matches || []) {
       evidence.push([serial, row.sheet, row.row, item.reference, item.description, item.unit, item.rate,
         item.currency, item.name, item.sheet, item.row]);
     }
